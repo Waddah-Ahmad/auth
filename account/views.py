@@ -1,31 +1,48 @@
+import json
+from lib2to3.pgen2 import token
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
-from account.serializers import SendPasswordResetEmailSerializer, UserChangePasswordSerializer, UserLoginSerializer, UserPasswordResetSerializer, UserProfileSerializer, UserRegistrationSerializer
+from account.serializers import SendPasswordResetEmailSerializer, UserChangePasswordSerializer, UserLoginSerializer, UserPasswordResetSerializer, UserProfileSerializer, UserRegistrationSerializer 
 from django.contrib.auth import authenticate
 from account.renderers import UserRenderer
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-# Generate Token Manually
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Customizes JWT default Serializer to add more information about user"""
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['is_admin'] = user.is_admin
+        token['email'] = user.email
+        return token
+
+
 def get_tokens_for_user(user):
-  refresh = RefreshToken.for_user(user)
-  return {
-      'refresh': str(refresh),
-      'access': str(refresh.access_token),
-  }
+    refresh = CustomTokenObtainPairSerializer.get_token(user)
+    return {
+        'refresh': str(refresh),
+        'access': str(refresh.access_token),
+    }
+
+
 
 class UserRegistrationView(APIView):
   renderer_classes = [UserRenderer]
+
   def post(self, request, format=None):
     serializer = UserRegistrationSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
     token = get_tokens_for_user(user)
-    return Response({'token':token, 'msg':'Registration Successful'}, status=status.HTTP_201_CREATED)
+    # print(token)
+    #return Response(token, status=status.HTTP_201_CREATED)
+    return Response(token , status=status.HTTP_201_CREATED)
 
 class UserLoginView(APIView):
   renderer_classes = [UserRenderer]
+  
   def post(self, request, format=None):
     serializer = UserLoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -34,7 +51,7 @@ class UserLoginView(APIView):
     user = authenticate(email=email, password=password)
     if user is not None:
       token = get_tokens_for_user(user)
-      return Response({'token':token, 'msg':'Login Success'}, status=status.HTTP_200_OK)
+      return Response({'token':token['access'], 'msg':'Password '}, status=status.HTTP_200_OK)
     else:
       return Response({'errors':{'non_field_errors':['Email or Password is not Valid']}}, status=status.HTTP_404_NOT_FOUND)
 
